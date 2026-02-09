@@ -1,313 +1,375 @@
-# JavaScript Frontend Style Guide (Project-Derived, Library-Agnostic)
+# JavaScript Frontend Style Guide (Cross-Project, Project-Derived)
 
 ## 1. Purpose
-This guide documents the coding style and architectural patterns extracted from this project and generalizes them for reuse in other JavaScript frontend codebases.
+This guide captures coding patterns extracted from real production JavaScript and generalizes them so teams can reuse the same style in different projects, domains, and stacks.
 
-Goals:
-- Keep modules easy to read and modify.
-- Keep UI logic, domain logic, and infrastructure concerns separated.
-- Reduce regressions by using predictable naming, structure, and behavior.
-- Stay independent of specific libraries for HTTP, loading indicators, charting, or UI frameworks.
+Use this guide to keep code:
+- readable and predictable
+- modular and testable
+- framework/library independent
+- stable under changing business requirements
 
 ## 2. Scope
-This guide applies to:
-- Plain JavaScript modules (`import`/`export`).
-- DOM-driven pages (forms, tables, charts, interactive views).
-- Feature modules with asynchronous data loading and user actions.
+Applies to:
+- Browser JavaScript modules (`import`/`export`) and legacy script modules.
+- DOM-driven pages (forms, tables, charts, dashboards, map-like views).
+- Feature code with asynchronous data loading and user interactions.
 
-This guide does not require a specific framework.
+Does not force:
+- any specific HTTP library
+- any specific notification/loading library
+- any specific UI framework
 
 ## 3. Core Principles
-- Prefer explicit over clever.
-- Keep each function small and single-purpose.
-- Separate "fetch/map data" from "render UI."
-- Use consistent naming to make behavior obvious.
-- Minimize hidden dependencies and global side effects.
-- Handle unhappy paths intentionally (validation errors, empty data, failed requests).
+- Prefer explicit behavior over implicit side effects.
+- Keep each function single-purpose.
+- Separate data retrieval, data normalization, and rendering.
+- Keep state transitions visible and intentional.
+- Handle empty/error/loading states by design, not as afterthoughts.
+- Encapsulate reusable UI behavior instead of duplicating event code.
 
-## 4. Recommended Folder and Layering Model
-- `modules/*`: feature logic (UI orchestration, events, view state).
-- `api/*` or `services/*`: transport-facing calls (endpoints, request configuration).
-- `shared/*` or `helpers/*`: pure utilities reused across features.
-- `common/*`: cross-page UI behavior (navbar, sidebar, auth UI, etc).
+## 4. Layering Model
+Recommended layering:
+- `modules/*`: feature orchestration and page behavior.
+- `services/*` or `api/*`: backend transport calls.
+- `shared/*` or `utils/*`: pure helpers and formatting logic.
+- `ui/*` or `widgets/*`: reusable UI components/controllers.
+- `core/*`: app shell behavior (layout lifecycle, global interactions).
 
-Rules:
-- Feature modules can import services and helpers.
-- Services should not import feature modules.
-- Helpers should be mostly pure and framework-independent.
+Dependency rules:
+- Feature modules can depend on services/utils/widgets.
+- Services cannot depend on feature modules.
+- Utils should avoid DOM and transport dependencies.
+- Core layer should not know business rules.
 
-## 5. Standard Feature Module Structure
-Use this section order for consistency:
+## 5. Standard Feature File Structure
+Use consistent section order:
 1. Imports
-2. Constants and immutable configuration
-3. Local runtime state (`GLOBAL` / module-scoped state object)
-4. Utility helpers local to the module
-5. Render functions (table/chart/DOM sections)
-6. Data orchestration functions (load/map/transform)
-7. User action handlers (submit/edit/delete/filter)
-8. Event wiring (`loadEvent`, delegation setup)
-9. Bootstrapping (`ready(...)` or equivalent init entry)
-10. Optional `window.*` exports (only for unavoidable legacy inline handlers)
+2. Constants/config
+3. Local state
+4. Selectors/cache
+5. Pure helper functions
+6. Data normalization functions
+7. Render functions
+8. Action handlers (submit/create/update/delete)
+9. Event wiring
+10. Init/bootstrap
 
 ## 6. Naming Conventions
-### 6.1 Constants and State
-- Constants: `UPPER_SNAKE_CASE` (`DEFAULT_VIEW_MODE`, `MAX_UPLOAD_SIZE`).
-- State objects: `GLOBAL`, `DOM`, or explicit names like `viewState`.
-- Avoid cryptic names (`a`, `tmp1`, `obj2`) outside very small scopes.
+### 6.1 Variables and constants
+- Constants: `UPPER_SNAKE_CASE`.
+- Local state objects: `state`, `viewState`, `filterState`.
+- DOM cache objects: `dom`.
 
-### 6.2 Function Prefixes by Responsibility
-- `get*` / `load*`: retrieve or initialize data.
-- `render*` / `build*`: prepare or write UI output.
-- `handle*`: event handlers, often synchronous routing logic.
-- `submit*`: form submit workflows.
-- `post*` / `create*` / `update*` / `delete*`: command actions.
-- `parse*` / `format*` / `safe*`: conversion and utility helpers.
+### 6.2 Function prefixes
+- `load*`, `fetch*`: get remote/local data.
+- `normalize*`, `map*`, `to*`: transform data shape.
+- `render*`, `build*`: produce UI output.
+- `bind*`, `wire*`: attach events.
+- `handle*`: route event/action logic.
+- `validate*`: form or business validation.
 
-### 6.3 Boolean and Condition Names
-- Use meaningful booleans: `isValid`, `hasData`, `isEditable`, `shouldRefresh`.
-- Avoid ambiguous booleans: `flag`, `status1`.
+### 6.3 Boolean naming
+- `is*`, `has*`, `can*`, `should*`.
+- Avoid ambiguous names like `flag`, `status1`.
 
-## 7. Function Design Guidelines
-- Keep function length practical; split when a function mixes too many concerns.
-- Prefer pure helpers for transformation logic.
-- Pass dependencies as parameters when practical instead of reading globals everywhere.
-- Return predictable shapes from helpers (for example `{ thead, tbody }` instead of mixed types).
+## 7. Utility Function Standards
+Define shared utility behavior once and reuse everywhere.
 
-Good pattern:
+Recommended utility groups:
+- **Existence/empty checks**: `isNil`, `isBlank`, `isEmptyObject`, `isEmptyArray`.
+- **Fallback formatters**: `toEmptyString`, `toNA`, `toZero`.
+- **Type conversion**: `toNumber`, `toBoolean`, `toDate`.
+- **Safe access**: `safeGet`, `pick`, `coalesce`.
+
+Rules:
+- Keep helpers pure (no DOM mutation, no global writes).
+- Return deterministic values for invalid input.
+- Centralize null/undefined handling to avoid repeated inline checks.
+
+## 8. Data Normalization Contract
+Normalize incoming data before rendering.
+
+Normalization checklist:
+- convert numeric fields to numbers
+- normalize null-like values (`null`, `undefined`, `'null'`, `'undefined'`)
+- assign explicit defaults
+- normalize date/time formats
+- map backend enum/status to UI-friendly structure
+
+Example output model:
 ```js
-const buildRows = (items) => {
-  return items.map((item) => ({
-    id: Number(item.id),
-    label: item.name || '',
-    value: Number(item.value || 0),
-  }));
-};
-```
-
-## 8. State Management (Without Framework)
-Use a small module-scoped object for runtime UI state:
-```js
-const GLOBAL = {
-  viewMode: 'week',
-  activeDate: null,
-  selectedId: null,
-};
-```
-
-Guidelines:
-- Keep state minimal and explicit.
-- Store only what is needed to render/act.
-- Derive computed values when needed; do not persist everything.
-- Reset ephemeral state when modal/page context closes.
-
-## 9. Data Transformation Rules
-- Normalize API/domain data before rendering.
-- Handle null/undefined/empty string consistently.
-- Convert types early (numbers, dates, booleans).
-- Keep fallback defaults explicit.
-
-Preferred utility patterns:
-- `safeGet(obj, 'a.b.c', fallback)`
-- `parseNumber(value, fallback)`
-- `normalizeDate(dateLike)`
-
-## 10. DOM and Rendering Guidelines
-### 10.1 Rendering Strategy
-- Build HTML strings or fragments first, then update DOM once.
-- Avoid repeated `innerHTML +=` in loops on large data sets.
-- Keep render functions idempotent where possible.
-
-### 10.2 Empty and Error States
-- Always render a clear empty state (`No data`, `No records found`).
-- Render recoverable error state for critical sections.
-
-### 10.3 Selectors and Access
-- Prefer `querySelector`/`querySelectorAll`.
-- Cache frequently reused DOM references where useful.
-- Avoid deeply chained selectors if a stable ID/class is available.
-
-## 11. Event Handling Guidelines
-### 11.1 Prefer Delegation for Dynamic Content
-```js
-tbody.addEventListener('click', (event) => {
-  const cell = event.target.closest('[data-action="edit"]');
-  if (!cell) return;
-  handleEdit(cell.dataset);
-});
-```
-
-### 11.2 Prevent Duplicate Bindings
-- Bind listeners in a single init path.
-- Avoid rebinding listeners inside render unless intentionally scoped.
-
-### 11.3 Avoid Inline Handlers
-- Prefer `addEventListener`.
-- If legacy HTML requires inline calls, expose a minimal bridge via `window`.
-
-## 12. Form and Validation Standards
-- For submit flows:
-  - call `preventDefault()` and `stopPropagation()`.
-  - validate before any command action.
-  - show field-level feedback and global feedback clearly.
-- Keep validation logic close to form handling, with reusable validators in helpers.
-
-Template:
-```js
-const submitForm = async (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-
-  if (!event.target.checkValidity()) {
-    event.target.classList.add('was-validated');
-    return;
-  }
-
-  // command action
-};
-```
-
-## 13. Async, Errors, and User Feedback (Library-Agnostic)
-Use a standard async envelope:
-```js
-try {
-  // optional: show busy indicator
-  const result = await serviceCall(params);
-  // map and render
-} catch (error) {
-  console.error(error);
-  // optional: show toast/dialog/inline message
-} finally {
-  // optional: hide busy indicator
+{
+  id: 0,
+  name: '',
+  quantity: 0,
+  status: { key: 'unknown', label: 'Unknown', tone: 'neutral' }
 }
 ```
 
-Guidelines:
-- Never swallow errors silently.
-- Surface actionable messages to users; keep technical details in logs.
-- Handle cancellation/aborts where relevant (search/filter rapidly changing UI).
-- Ensure UI state is restored in `finally`.
+## 9. State Management Without Framework
+Use one module-scoped state object.
 
-## 14. Library Independence Strategy
-To keep portability:
-- Define adapters/interfaces at the boundary:
-  - `dataClient` (HTTP or RPC)
-  - `notify` (toast/dialog/alert)
-  - `busy` (loading overlay/spinner)
-- Keep feature modules calling abstractions, not concrete library APIs.
+Rules:
+- Store minimal mutable state only.
+- Compute derived values on demand.
+- Reset ephemeral state after modal/dialog closes.
+- Do not spread mutable globals across files.
 
-Example:
+Suggested pattern:
 ```js
-// feature module depends on abstraction
-await dataClient.get('/items', params);
-notify.error(message);
-busy.show();
-busy.hide();
-```
-
-You can later map these to any stack (Fetch, Axios, RTK Query, custom SDK, etc.).
-
-## 15. Formatting and Readability
-- Use consistent indentation and semicolon style across repo.
-- Keep line length readable.
-- Group related constants and functions.
-- Use short, meaningful comments only where intent is non-obvious.
-- Remove dead/commented blocks before merge unless intentionally retained with reason.
-
-## 16. Internationalization and Text
-- Do not hardcode user-facing strings when i18n is required.
-- Centralize labels/messages through translation keys.
-- Keep fallback text deterministic if translation data is missing.
-
-## 17. Security and Data Safety Basics
-- Treat all remote data as untrusted.
-- Sanitize or escape user-generated values before injecting into HTML.
-- Avoid exposing sensitive data in logs.
-- Validate critical numeric/date inputs before command actions.
-
-## 18. Quality and Maintainability Rules
-- Keep cyclomatic complexity controlled.
-- Avoid huge "god modules"; split by domain when a file grows too much.
-- Prefer composition over deep conditional chains.
-- When behavior diverges by type/mode, use a strategy map where possible.
-
-Example:
-```js
-const handlersByType = {
-  create: handleCreate,
-  update: handleUpdate,
-  remove: handleRemove,
+const state = {
+  page: 1,
+  pageSize: 20,
+  keyword: '',
+  sort: { field: 'createdAt', direction: 'desc' },
 };
 ```
 
-## 19. Practical Do/Don't List
-Do:
-- Normalize data before rendering.
-- Keep render and data-fetch concerns separated.
-- Use delegation for dynamic table/list interactions.
-- Keep state transitions explicit.
+## 10. Rendering Strategy
+### 10.1 Render pipeline
+Use a predictable pipeline:
+1. load/fetch data
+2. normalize data
+3. compute view model
+4. render once per region
+5. bind/update interactions
 
-Don't:
-- Mix transport, transformation, and UI writes in one giant function.
-- Depend heavily on global mutable state without clear ownership.
-- Duplicate the same parsing/formatting logic in many modules.
-- Rely on implicit type coercion in critical calculations.
+### 10.2 DOM update rules
+- Build HTML string/fragment first, then update DOM once.
+- Avoid repeated `innerHTML +=` in loops.
+- Keep render functions idempotent.
+- Always handle empty state explicitly.
 
-## 20. Reusable Feature Skeleton
+### 10.3 Injection safety
+- Escape untrusted strings before injecting into HTML.
+- Never trust remote values.
+
+## 11. Event Handling and Interaction
+- Prefer event delegation for dynamic content.
+- Bind events in one init path to avoid duplicate listeners.
+- Avoid inline HTML handlers; use a legacy bridge only when required.
+- Guard action handlers early (`if (!target) return`).
+
+Delegation pattern:
 ```js
-import { listItems, saveItem } from '../services/itemService.js';
+tableBody.addEventListener('click', (event) => {
+  const action = event.target.closest('[data-action]');
+  if (!action) return;
+  handleTableAction(action.dataset.action, action.dataset.id);
+});
+```
 
-const GLOBAL = {
-  filter: '',
-  selectedId: null,
+## 12. Table and Pagination Logic Standards
+### 12.1 Pagination model
+Use deterministic pagination state:
+- `page`
+- `pageSize`
+- `total`
+- `windowSize` (visible page button window)
+
+### 12.2 Windowed page button logic
+For large result sets, render a window around current page and include first/last with ellipsis as needed.
+
+### 12.3 Responsibilities split
+- `paginate(data, page, pageSize)`: returns sliced data + page count.
+- `buildPaginationView(state)`: returns pagination view model.
+- `renderPagination(viewModel)`: renders buttons.
+- `wirePaginationEvents()`: updates page and refreshes data.
+
+### 12.4 Table update contract
+- Render `<thead>` and `<tbody>` from the same schema definition.
+- Keep row rendering separate from pagination rendering.
+- Ensure deterministic fallback row for empty data.
+
+## 13. Reusable Widget Pattern
+When interaction complexity grows (drag reorder, tree grid, advanced filters), move behavior into widget classes/controllers.
+
+Widget rules:
+- Constructor receives root element + optional config.
+- Expose lifecycle methods: `init()`, `destroy()`, optional `refresh(data)`.
+- Keep event handlers bound to widget instance.
+- Never leak listeners on re-init.
+
+Minimal structure:
+```js
+class ReorderTable {
+  constructor(root, options = {}) {
+    this.root = root;
+    this.options = options;
+  }
+
+  init() {
+    this.bindEvents();
+  }
+
+  destroy() {
+    this.unbindEvents();
+  }
+}
+```
+
+## 14. Form and Validation Rules
+- Stop native submit flow first.
+- Validate locally before command actions.
+- Show both field-level and global feedback.
+- Keep validation rules deterministic and reusable.
+- Split `validateForm(data)` from `submitForm(data)`.
+
+## 15. Async and Error Envelope
+Use consistent async structure:
+```js
+try {
+  busy.show();
+  const raw = await service.get(params);
+  const data = normalizeResult(raw);
+  render(data);
+} catch (error) {
+  logger.error(error);
+  notify.error(getUserMessage(error));
+} finally {
+  busy.hide();
+}
+```
+
+Rules:
+- never swallow exceptions
+- always restore UI state in `finally`
+- keep user messages non-technical
+- keep technical detail in logs
+
+## 16. Adapter Boundary (Library Independence)
+Do not call concrete third-party APIs directly inside feature modules.
+
+Define boundaries:
+- `dataClient`: remote calls
+- `notify`: toast/dialog/alert
+- `busy`: loading state
+- `storage`: local/session persistence
+- `exporter`: csv/xlsx/pdf export
+
+Feature modules call adapters, not vendor APIs.
+
+## 17. App Shell and Layout Lifecycle
+For dashboard/admin style pages, keep app-shell logic centralized:
+- viewport/container height recalculation
+- sidebar/nav collapse and responsive toggles
+- global tooltip/popover initialization
+- global resize/orientation handling
+
+Rules:
+- isolate shell behavior from business modules
+- keep layout recalculation in dedicated function
+- avoid hardcoding business selectors in shell layer
+
+## 18. Session and Security-Oriented Frontend Flow
+For auth-sensitive actions (logout, token cleanup):
+- confirm user intent
+- clear local/session storage keys intentionally
+- clear auth cookies consistently
+- redirect through canonical logout route
+
+Also:
+- do not expose tokens or sensitive payloads in logs
+- avoid embedding secrets in client-side source
+
+## 19. Domain Formatting Pattern
+Business statuses/enums should be converted through dedicated mappers.
+
+Mapper output should include:
+- `key` (stable identifier)
+- `label` (display text)
+- `tone` or `className` (UI presentation hint)
+
+Never scatter hardcoded status strings across render functions.
+
+## 20. Legacy jQuery to Modern JS Migration Rules
+If codebase is mixed (jQuery + modern JS), use incremental migration:
+- preserve behavior first, then refactor structure
+- replace one region/module at a time
+- wrap legacy plugin calls in adapter functions
+- avoid introducing new direct jQuery dependency in new modules
+
+Target state:
+- modern modules use `querySelector` + `addEventListener`
+- jQuery remains only in compatibility layer until retired
+
+## 21. Commenting and Readability
+- Comment intent, not obvious syntax.
+- Keep comments short and technical.
+- Remove dead/commented-out blocks before merge unless intentionally retained with reason.
+- Keep function size practical; split when responsibility becomes mixed.
+
+## 22. Testing and Review Checklist
+Before merge, verify:
+1. Data normalization covers null/invalid input.
+2. Empty/error/loading states are visible and correct.
+3. Event bindings are not duplicated after rerender.
+4. Pagination, sorting, and filtering stay in sync.
+5. Reusable widgets clean up listeners on destroy.
+6. No direct third-party API leakage in feature code.
+7. No sensitive data leakage in logs/UI.
+
+## 23. Reusable Module Skeleton
+```js
+import { dataClient } from '../adapters/dataClient.js';
+import { notify } from '../adapters/notify.js';
+
+const state = {
+  page: 1,
+  pageSize: 20,
+  keyword: '',
 };
+
+const dom = {
+  tableBody: document.querySelector('#table-body'),
+  pagination: document.querySelector('#pagination'),
+};
+
+const normalizeItem = (raw) => ({
+  id: Number(raw?.id || 0),
+  name: String(raw?.name || ''),
+  qty: Number(raw?.qty || 0),
+});
 
 const renderTable = (rows) => {
-  const html = rows
-    .map((row) => `<tr data-id="${row.id}"><td>${row.name}</td><td>${row.value}</td></tr>`)
-    .join('');
+  const html = rows.length
+    ? rows.map((r) => `<tr data-id="${r.id}"><td>${r.name}</td><td>${r.qty}</td></tr>`).join('')
+    : '<tr><td colspan="2">No data</td></tr>';
 
-  document.querySelector('#tbl-items tbody').innerHTML =
-    html || '<tr><td colspan="2">No data</td></tr>';
+  dom.tableBody.innerHTML = html;
 };
 
-const getData = async () => {
+const loadData = async () => {
   try {
-    const result = await listItems({ keyword: GLOBAL.filter });
-    const rows = (result?.data || []).map((item) => ({
-      id: Number(item.id),
-      name: item.name || '',
-      value: Number(item.value || 0),
-    }));
+    const res = await dataClient.get('/items', { page: state.page, pageSize: state.pageSize, keyword: state.keyword });
+    const rows = (res?.data || []).map(normalizeItem);
     renderTable(rows);
   } catch (error) {
-    console.error(error);
+    notify.error('Unable to load data');
   }
 };
 
-const loadEvent = () => {
-  document.querySelector('#btn-search').addEventListener('click', () => {
-    GLOBAL.filter = document.querySelector('#txt-keyword').value.trim();
-    getData();
-  });
-
-  document.querySelector('#tbl-items tbody').addEventListener('click', (event) => {
+const wireEvents = () => {
+  dom.tableBody.addEventListener('click', (event) => {
     const row = event.target.closest('tr[data-id]');
     if (!row) return;
-    GLOBAL.selectedId = Number(row.dataset.id);
+    // handle row action
   });
 };
 
 const init = () => {
-  loadEvent();
-  getData();
+  wireEvents();
+  loadData();
 };
 
 init();
 ```
 
-## 21. Optional Governance Additions
-For team-scale reuse, add:
-- ESLint ruleset and Prettier config.
-- Pull request checklist for this guide.
-- Shared templates for module scaffolding.
-- Architecture Decision Records (ADR) for exceptions.
+## 24. Governance for Cross-Project Reuse
+For team adoption across projects:
+- publish this guide as baseline engineering standard
+- keep a shared lint/format profile
+- provide starter templates for new modules
+- maintain a small changelog when guide rules evolve
+- define exception process (when and why a team may deviate)
