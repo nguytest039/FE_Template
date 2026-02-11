@@ -86,7 +86,7 @@ Use this pattern to avoid the common "header gap" while scrolling long tables.
 
 Rules:
 - Make `thead` sticky as a block (`position: sticky; top: 0`).
-- Keep one deterministic border model (`border-collapse: collapse; border-spacing: 0`).
+- Keep one deterministic border model (`collapse` or `separate`), and keep it consistent with page-level/global table CSS.
 - Remove default table bottom spacing (`margin-bottom: 0`).
 - Let the wrapper own scroll (`.table-responsive { overflow: auto; }`).
 - Use one separator strategy consistently (border or inset-shadow).
@@ -119,10 +119,41 @@ Reference CSS:
 }
 ```
 
+Production-proven variant (from `me-offline-dashboard` / `stencil.css`):
+```css
+.table {
+  margin-bottom: 0;
+  border-right: 1px solid #37567f;
+  border-top: 1px solid #37567f;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+}
+
+.table th,
+.table td {
+  border: none;
+  box-shadow: inset 0.5px -0.5px 0 #6290b5;
+}
+
+.table thead th {
+  background-color: #264b8b;
+}
+```
+
+When to use which:
+- Prefer `collapse` variant for isolated pages without strong global overrides.
+- Prefer the `stencil` variant when the project already uses global `box-shadow`-based table separators and `thead` sticky behavior.
+
 Troubleshooting if header still looks detached:
 - Check parent elements for `overflow: hidden` or transformed contexts.
-- Do not mix sticky on both `thead` and each `th` unless needed.
+- Do not mix sticky on both `thead` and each `th` in the same table.
 - Ensure `tbody` rows do not add unexpected top margin/padding.
+- Audit global overrides first (`style.css`, `style-dashboard.css`, module CSS). Most header-gap bugs are cascade conflicts, not table-render bugs.
 
 ## 6. Chart Construction Style
 ## 6.1 Container Pattern
@@ -261,14 +292,5 @@ You can change:
 - Fonts
 - Radii
 - Shadows
-
-## 14. Recommended Team Adoption
-Create a small UI kit package with:
-1. Layout primitives
-2. Table renderer utilities
-3. Chart base options factory
-4. Filter bar controller
-5. Modal form utilities
-6. Pagination controller
 
 Require new pages to compose from these blocks instead of writing page-specific patterns.
